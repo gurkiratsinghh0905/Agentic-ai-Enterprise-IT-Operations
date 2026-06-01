@@ -1,6 +1,9 @@
 from langchain_chroma import Chroma
 
-from embeddings import get_embedding_model
+from app.rag.embeddings import (
+    get_embedding_model
+)
+
 
 def get_retriever():
 
@@ -10,5 +13,5 @@ def get_retriever():
     )
 
     return db.as_retriever(
-        search_kwargs={"k":3}
+        search_kwargs={"k": 3}
     )

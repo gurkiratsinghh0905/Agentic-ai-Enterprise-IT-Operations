@@ -1,15 +1,29 @@
 from typing import TypedDict
+from typing import List
+from typing import Dict
+from typing import Any
+
 
 class AgentState(TypedDict):
 
-    query:str
+    query: str
 
-    retrieved_docs:list
+    retrieved_docs: List
 
-    diagnosis:str
+    diagnosis: str
 
-    tool_results:dict
+    tool_results: Dict[str, Any]
 
-    resolution:str
+    resolution: str
 
-    response:str
+    response: str
+
+    execution_path: List[str]
+
+    monitoring: Dict[str, Any]
+
+    need_tool: bool
+
+    route: str
+
+    error: str
