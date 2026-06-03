@@ -21,17 +21,15 @@ st.markdown("""
 
 html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
     font-family: 'Outfit', sans-serif;
-    background-color: #0b0f19 !important; /* Dark Slate Blue */
+    background-color: #0b0f19 !important;
     color: #e2e8f0;
 }
 
-/* Clean up standard Streamlit spacing */
 .block-container {
     padding-top: 2rem !important;
     padding-bottom: 2rem !important;
 }
 
-/* Glassmorphism Card styling */
 .glass-card {
     background: rgba(17, 24, 39, 0.7);
     border: 1px solid rgba(255, 255, 255, 0.05);
@@ -43,7 +41,6 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
     margin-bottom: 16px;
 }
 
-/* Header style block */
 .header-container {
     background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
     border: 1px solid rgba(255, 255, 255, 0.05);
@@ -68,7 +65,6 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
     margin: 0;
 }
 
-/* Custom button styling */
 div.stButton > button {
     background: linear-gradient(to right, #0284c7, #7c3aed);
     color: white !important;
@@ -87,11 +83,6 @@ div.stButton > button:hover {
     border: none !important;
 }
 
-div.stButton > button:active {
-    transform: translateY(0) !important;
-}
-
-/* Custom tabs styling */
 .stTabs [data-baseweb="tab-list"] {
     gap: 8px;
     background-color: rgba(15, 23, 42, 0.4);
@@ -112,18 +103,12 @@ div.stButton > button:active {
     padding-right: 16px;
 }
 
-.stTabs [data-baseweb="tab"]:hover {
-    color: #f8fafc;
-    background-color: rgba(255, 255, 255, 0.03);
-}
-
 .stTabs [aria-selected="true"] {
     background-color: rgba(124, 58, 237, 0.15) !important;
     color: #c084fc !important;
     border: 1px solid rgba(124, 58, 237, 0.3) !important;
 }
 
-/* Step Pipeline Flow */
 .pipeline-container {
     display: flex;
     flex-wrap: wrap;
@@ -154,25 +139,46 @@ div.stButton > button:active {
     font-weight: bold;
     font-size: 1.1rem;
 }
+
+.metric-card {
+    background: rgba(17, 24, 39, 0.8);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 14px 18px;
+    text-align: center;
+}
+
+.metric-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+
+.metric-value {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #c084fc;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# App Header Hero Section
+# ── Header ──────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="header-container">
     <h1 class="header-title">Enterprise IT Operations Copilot</h1>
-    <p class="header-subtitle">Intelligent Multi-Agent RAG Orchestration powered by LangGraph, ChromaDB, and Hugging Face</p>
+    <p class="header-subtitle">Multi-Agent RAG Orchestration · LangGraph · ChromaDB · Hugging Face Llama 3.1</p>
 </div>
 """, unsafe_allow_html=True)
 
-# System Status Dashboard Widgets
+# ── Live Service Status Dashboard ───────────────────────────────────────────
 st.markdown("### 🖥️ Live Service Operations Dashboard")
-status_info = get_system_status()
+status_info = get_system_status.invoke({})
 cols = st.columns(len(status_info))
 for i, (svc, stat) in enumerate(status_info.items()):
     with cols[i]:
-        # Green bullet for UP
-        badge_color = "#10b981" if stat.upper() == "UP" else "#ef4444"
+        badge_color = "#10b981" if str(stat).upper() == "UP" else "#ef4444"
         st.markdown(f"""
         <div class="glass-card" style="text-align: center; padding: 14px 10px; margin-bottom: 20px;">
             <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; margin-bottom: 6px;">{svc} STATUS</div>
@@ -183,35 +189,71 @@ for i, (svc, stat) in enumerate(status_info.items()):
         </div>
         """, unsafe_allow_html=True)
 
+# ── Query Input ──────────────────────────────────────────────────────────────
 st.markdown("### 💬 Submit IT Support Query")
 query = st.text_area(
     "Describe the technical issue, request, or symptom you are experiencing:",
-    placeholder="e.g. VPN not connecting after software update, or password reset process.",
+    placeholder="e.g. VPN not connecting after software update, or I need to reset my password.",
     height=100
 )
 
-if st.button("Submit Query"):
+if st.button("🚀 Submit Query"):
     if not query.strip():
         st.warning("Please describe your issue first.")
     else:
+        # Updated initial state with all new fields
         state = {
-            "query": query,
-            "retrieved_docs": [],
-            "diagnosis": "",
-            "tool_results": {},
-            "resolution": "",
-            "response": "",
-            "execution_path": [],
-            "monitoring": {},
-            "need_tool": False,
-            "route": "",
-            "error": ""
+            "query":           query,
+            "rewritten_query": "",
+            "retrieved_docs":  [],
+            "sources":         [],
+            "diagnosis":       "",
+            "category":        "",
+            "tool_results":    {},
+            "resolution":      "",
+            "response":        "",
+            "execution_path":  [],
+            "monitoring":      {},
+            "need_tool":       False,
+            "route":           "",
+            "retry_count":     0,
+            "error":           "",
+            "start_time":      0.0,
         }
 
-        with st.spinner("Orchestrating agents and generating solution..."):
+        with st.spinner("🤖 Orchestrating agents — classifying, retrieving, diagnosing, resolving..."):
             result = graph.invoke(state)
 
+        monitoring = result.get("monitoring", {})
+
+        # ── Quick Metrics Row ─────────────────────────────────────────────
+        st.markdown("### 📈 Run Summary")
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.markdown(f"""<div class="metric-card">
+                <div class="metric-label">Category</div>
+                <div class="metric-value">{result.get('category', 'N/A')}</div>
+            </div>""", unsafe_allow_html=True)
+        with m2:
+            st.markdown(f"""<div class="metric-card">
+                <div class="metric-label">Latency</div>
+                <div class="metric-value">{monitoring.get('latency_seconds', '—')}s</div>
+            </div>""", unsafe_allow_html=True)
+        with m3:
+            status_color = "#10b981" if monitoring.get("workflow_status") == "success" else "#ef4444"
+            st.markdown(f"""<div class="metric-card">
+                <div class="metric-label">Status</div>
+                <div class="metric-value" style="color:{status_color}">{monitoring.get('workflow_status', 'N/A').upper()}</div>
+            </div>""", unsafe_allow_html=True)
+        with m4:
+            st.markdown(f"""<div class="metric-card">
+                <div class="metric-label">Tool Retries</div>
+                <div class="metric-value">{result.get('retry_count', 0)}</div>
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown("---")
         st.markdown("### 🔍 Investigation Results")
+
         tab1, tab2, tab3, tab4 = st.tabs([
             "📋 Diagnostic Response",
             "📖 Retrieved Knowledge Base",
@@ -219,33 +261,36 @@ if st.button("Submit Query"):
             "📊 Agent Monitoring"
         ])
 
+        # ── Tab 1: Response ───────────────────────────────────────────────
         with tab1:
             st.markdown("""
             <div class="glass-card" style="border-left: 4px solid #7c3aed; padding-top: 15px;">
-                <div style="font-size: 1.2rem; font-weight: 700; color: #c084fc; margin-bottom: 15px;">Resolution Output</div>
+                <div style="font-size: 1.1rem; font-weight: 700; color: #c084fc; margin-bottom: 12px;">AI Resolution Output</div>
             """, unsafe_allow_html=True)
             st.markdown(result["response"])
             st.markdown("</div>", unsafe_allow_html=True)
 
+        # ── Tab 2: Retrieved Docs ─────────────────────────────────────────
         with tab2:
             st.markdown("#### 📖 Matching Knowledge Articles")
-            if not result.get("retrieved_docs"):
+            retrieved = result.get("retrieved_docs", [])
+            sources = result.get("sources", [])
+
+            if not retrieved:
                 st.info("No knowledge articles were retrieved for this query.")
             else:
-                for idx, doc in enumerate(result["retrieved_docs"]):
-                    source = doc.metadata.get("source", "Unknown Source")
-                    source_file = os.path.basename(source)
+                for idx, doc_text in enumerate(retrieved):
+                    source_name = sources[idx] if idx < len(sources) else "Unknown Source"
                     st.markdown(f"""
                     <div class="glass-card" style="border-left: 4px solid #38bdf8; margin-bottom: 12px; padding: 18px;">
                         <div style="font-weight: 600; color: #38bdf8; margin-bottom: 8px; font-size: 0.95rem;">
-                            📄 Article {idx + 1}: <span style="color: #cbd5e1; font-weight: normal;">{source_file}</span>
+                            📄 Article {idx + 1}: <span style="color: #cbd5e1; font-weight: normal;">{source_name}</span>
                         </div>
-                        <div style="color: #cbd5e1; font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;">
-{doc.page_content}
-                        </div>
+                        <div style="color: #cbd5e1; font-size: 0.9rem; line-height: 1.6; white-space: pre-wrap;">{doc_text}</div>
                     </div>
                     """, unsafe_allow_html=True)
 
+        # ── Tab 3: Tools ──────────────────────────────────────────────────
         with tab3:
             st.markdown("#### 🛠️ Automated Tools Executed")
             tool_results = result.get("tool_results", {})
@@ -257,7 +302,7 @@ if st.button("Submit Query"):
                     with col1:
                         st.markdown("""
                         <div class="glass-card" style="border-left: 4px solid #f59e0b;">
-                            <h5 style="margin: 0 0 12px 0; color: #f59e0b;">🖥️ System Diagnostics Run</h5>
+                            <h5 style="margin: 0 0 12px 0; color: #f59e0b;">🖥️ System Diagnostics</h5>
                         """, unsafe_allow_html=True)
                         st.json(tool_results["system_status"])
                         st.markdown("</div>", unsafe_allow_html=True)
@@ -265,15 +310,23 @@ if st.button("Submit Query"):
                     with col2:
                         st.markdown("""
                         <div class="glass-card" style="border-left: 4px solid #10b981;">
-                            <h5 style="margin: 0 0 12px 0; color: #10b981;">🎫 IT Support Ticket Created</h5>
+                            <h5 style="margin: 0 0 12px 0; color: #10b981;">🎫 IT Support Ticket</h5>
                         """, unsafe_allow_html=True)
                         st.json(tool_results["ticket"])
                         st.markdown("</div>", unsafe_allow_html=True)
+                # Extra tools if present
+                for key in ["software_check", "asset_info"]:
+                    if key in tool_results:
+                        st.markdown(f"**{key.replace('_', ' ').title()}:**")
+                        st.json(tool_results[key])
 
+            if result.get("error"):
+                st.error(f"⚠️ Tool Error: {result['error']}")
+
+        # ── Tab 4: Monitoring ─────────────────────────────────────────────
         with tab4:
-            st.markdown("#### 📊 Execution Pipeline")
+            st.markdown("#### 📊 Agent Execution Pipeline")
             path = result.get("execution_path", [])
-            
             pipeline_html = '<div class="pipeline-container">'
             for i, step in enumerate(path):
                 pipeline_html += f'<div class="pipeline-step active">{step.upper()}</div>'
@@ -283,4 +336,9 @@ if st.button("Submit Query"):
             st.markdown(pipeline_html, unsafe_allow_html=True)
 
             st.markdown("#### ⏱️ Monitoring Metadata")
-            st.json(result.get("monitoring", {}))
+            st.json(monitoring)
+
+            if result.get("sources"):
+                st.markdown("#### 📄 Knowledge Sources Used")
+                for s in result["sources"]:
+                    st.markdown(f"- `{s}`")

@@ -1,600 +1,554 @@
-# 🚀 Enterprise IT Operations Copilot — Complete In-Depth Walkthrough
+# 🚀 Enterprise IT Operations Copilot — Updated Walkthrough (Post-Upgrade)
 
-This document explains **every single step** of how this application works — from the moment a user types a query to the final response they see. It includes architecture diagrams, sequence diagrams, data-flow traces, code explanations, and a real execution example.
+> This document reflects the **upgraded** architecture. Every component has been improved from the original basic pipeline into a medium-level, industry-style multi-agent system.
 
 ---
 
-## 📁 Project Structure Overview
+## 📁 Project Structure (Current State)
 
 ```
 agentic-it-enterprise-capstone/
 │
-├── .env                          ← API keys (HF_TOKEN, LangChain config)
-├── run.py                        ← CLI entry point (runs the workflow)
-├── requirements.txt              ← Python dependencies
+├── .env                          ← HF_TOKEN, LangChain config
+├── run.py                        ← CLI entry point (UTF-8 fixed)
+├── requirements.txt
+├── run.txt                       ← Setup steps reference
 │
-├── knowledge_base/               ← IT troubleshooting documents (RAG source)
-│   ├── vpn_guide.md
-│   ├── password_reset.md
-│   ├── mfa_setup.md
-│   ├── outlook_setup.md
-│   ├── network_troubleshooting.md
-│   ├── software_installation.md
-│   ├── device_onboarding.md
-│   ├── access_request.md
-│   ├── security_policy.md
-│   └── remote_work_policy.md
+├── knowledge_base/               ← 10 IT markdown docs (RAG source)
+├── chroma_db/                    ← Vector DB (auto-built by ingest)
+├── logs/
+│   └── execution.json            ← NOW ACTUALLY WRITTEN by monitoring agent
 │
-├── chroma_db/                    ← Vector database storage (auto-generated)
-│
-├── app/
-│   ├── llm.py                    ← LLM client (Hugging Face Llama 3.1)
-│   │
-│   ├── agents/                   ← All 6 agents in the pipeline
-│   │   ├── orchestrator.py
-│   │   ├── retrieval_agent.py
-│   │   ├── diagnostic_agent.py
-│   │   ├── tool_agent.py
-│   │   ├── resolution_agent.py
-│   │   ├── response_agent.py
-│   │   └── monitoring_agent.py
-│   │
-│   ├── rag/                      ← RAG pipeline components
-│   │   ├── loader.py             ← Loads .md files from knowledge_base/
-│   │   ├── chunker.py            ← Splits documents into small chunks
-│   │   ├── embeddings.py         ← Embedding model (BGE-small)
-│   │   ├── vectordb.py           ← Creates ChromaDB vector store
-│   │   ├── retriever.py          ← Queries ChromaDB for similar docs
-│   │   └── ingest.py             ← One-time script to build the DB
-│   │
-│   ├── tools/                    ← Simulated IT backend tools
-│   │   ├── system_status_tool.py
-│   │   ├── ticket_tool.py
-│   │   ├── asset_tool.py
-│   │   └── software_tool.py
-│   │
-│   ├── workflows/                ← LangGraph workflow definition
-│   │   ├── state.py              ← State dictionary schema (TypedDict)
-│   │   └── graph.py              ← Agent graph wiring & conditional edges
-│   │
-│   ├── monitoring/               ← Logging, metrics, evaluation utilities
-│   │   ├── logger.py
-│   │   ├── metrics.py
-│   │   └── evaluator.py
-│   │
-│   └── ui/
-│       └── streamlit_app.py      ← Web UI (Streamlit dashboard)
+└── app/
+    ├── __init__.py               ← NEW (required for Python packages)
+    ├── llm.py                    ← UPGRADED: system prompt + max_tokens=1024
+    │
+    ├── agents/
+    │   ├── __init__.py           ← NEW
+    │   ├── orchestrator.py       ← UPGRADED: LLM classification (not keywords)
+    │   ├── retrieval_agent.py    ← UPGRADED: clean text + source attribution
+    │   ├── diagnostic_agent.py   ← UPGRADED: structured prompt + robust parsing
+    │   ├── tool_agent.py         ← UPGRADED: @tool .invoke() + selective + retry
+    │   ├── resolution_agent.py   ← UPGRADED: clean context + source names
+    │   ├── response_agent.py     ← UPGRADED: citations + ticket section
+    │   └── monitoring_agent.py   ← UPGRADED: latency + logging
+    │
+    ├── rag/
+    │   ├── __init__.py           ← NEW
+    │   ├── retriever.py          ← UPGRADED: MMR search
+    │   └── (loader, chunker, embeddings, vectordb, ingest — unchanged)
+    │
+    ├── tools/
+    │   ├── __init__.py           ← NEW
+    │   ├── system_status_tool.py ← UPGRADED: @tool decorator
+    │   ├── ticket_tool.py        ← UPGRADED: @tool decorator
+    │   ├── asset_tool.py         ← UPGRADED: @tool decorator (now usable)
+    │   └── software_tool.py      ← UPGRADED: @tool decorator (now usable)
+    │
+    ├── workflows/
+    │   ├── __init__.py           ← NEW
+    │   ├── state.py              ← UPGRADED: 6 new fields
+    │   └── graph.py              ← UPGRADED: 2 conditional edges + retry loop
+    │
+    ├── monitoring/
+    │   ├── __init__.py           ← NEW
+    │   ├── logger.py             ← NOW USED (called by monitoring_agent)
+    │   ├── metrics.py            ← Recreated
+    │   └── evaluator.py          ← Recreated
+    │
+    └── ui/
+        ├── __init__.py           ← NEW
+        └── streamlit_app.py      ← UPGRADED: metrics row + source rendering
 ```
 
 ---
 
-## 🏗️ High-Level Architecture Diagram
-
-This is the big picture of how all the pieces connect:
+## 🏗️ Updated Architecture Diagram
 
 ```mermaid
 graph TB
-    subgraph USER_LAYER["🧑 User Layer"]
-        UI["Streamlit Web UI<br/>(streamlit_app.py)"]
-        CLI["CLI Runner<br/>(run.py)"]
+    subgraph USER["🧑 User Layer"]
+        UI["Streamlit UI\n(http://localhost:8501)"]
+        CLI["run.py CLI"]
     end
 
-    subgraph ORCHESTRATION["⚙️ LangGraph Orchestration Engine (graph.py)"]
+    subgraph GRAPH["⚙️ LangGraph Workflow — graph.py"]
         direction TB
-        A["1. Orchestrator Agent"]
-        B["2. Retrieval Agent"]
-        C["3. Diagnostic Agent"]
-        D{"Router:<br/>Need Tool?"}
-        E["4. Tool Agent"]
-        F["5. Resolution Agent"]
-        G["6. Response Agent"]
-        H["7. Monitoring Agent"]
+        ORC["1️⃣ Orchestrator Agent\nLLM classifies intent\n→ CATEGORY + NEEDS_RETRIEVAL"]
+        RET["2️⃣ Retrieval Agent\nChromaDB MMR search\n→ clean text + source filenames"]
+        DIAG["3️⃣ Diagnostic Agent\nStructured LLM analysis\n→ ROOT_CAUSE + NEED_TOOL + CONFIDENCE"]
+        ROUTE1{"Conditional Edge 1\nneed_tool?"}
+        TOOL["4️⃣ Tool Agent\n@tool .invoke() calls\nSelective by category"]
+        ROUTE2{"Conditional Edge 2\nerror AND retry_count < 2?"}
+        RES["5️⃣ Resolution Agent\nLLM synthesis\nClean context + source names"]
+        RESP["6️⃣ Response Agent\nMarkdown formatter\nCitations + Ticket section"]
+        MON["7️⃣ Monitoring Agent\nLatency tracking\nWrites logs/execution.json"]
 
-        A --> B
-        B --> C
-        C --> D
-        D -->|YES| E
-        D -->|NO| F
-        E --> F
-        F --> G
-        G --> H
+        ORC --> RET --> DIAG --> ROUTE1
+        ROUTE1 -->|"YES"| TOOL
+        ROUTE1 -->|"NO"| RES
+        TOOL --> ROUTE2
+        ROUTE2 -->|"retry"| TOOL
+        ROUTE2 -->|"proceed"| RES
+        RES --> RESP --> MON
     end
 
-    subgraph RAG_LAYER["📚 RAG Pipeline"]
-        KB["Knowledge Base<br/>(10 markdown files)"]
-        EMB["Embedding Model<br/>(BGE-small-en-v1.5)"]
-        VDB["ChromaDB<br/>(Vector Store)"]
+    subgraph RAG["📚 Upgraded RAG"]
+        VDB["ChromaDB\nMMR Search\nk=4, fetch_k=10"]
+        SRC["Source Attribution\nos.path.basename(metadata)"]
     end
 
-    subgraph LLM_LAYER["🧠 LLM Layer"]
-        LLM["Hugging Face API<br/>Llama 3.1 8B Instruct"]
+    subgraph TOOLS["🛠️ @tool Decorated Functions"]
+        T1["get_system_status()\n→ {vpn, mail, network}"]
+        T2["create_ticket(issue)\n→ {ticket_id, status}"]
+        T3["asset_lookup(user)\n→ {device, serial}"]
+        T4["software_lookup(name)\n→ approved/not approved"]
     end
 
-    subgraph TOOLS_LAYER["🛠️ IT Tools Layer"]
-        T1["System Status Tool"]
-        T2["Ticket Tool"]
-        T3["Asset Tool"]
-        T4["Software Tool"]
+    subgraph LLM["🧠 Llama 3.1 8B (HF API)"]
+        L1["system_prompt + user prompt\nmax_tokens=1024\ntry/except → LLM_ERROR string"]
     end
 
-    UI & CLI --> A
-    B --> VDB
-    VDB --> B
-    KB -.->|Ingest Pipeline| EMB
-    EMB -.->|Store Vectors| VDB
-    C -->|Send Prompt| LLM
-    LLM -->|Return Analysis| C
-    E --> T1 & T2
-    F -->|Send Prompt| LLM
-    LLM -->|Return Resolution| F
-    H --> UI & CLI
+    UI & CLI -->|"initial state dict"| ORC
+    RET -->|"invoke(query)"| VDB
+    VDB -->|"4 diverse chunks + metadata"| SRC
+    ORC & DIAG & RES -->|"invoke(prompt, system_prompt)"| L1
+    TOOL -->|".invoke({})"| T1 & T2
+    MON -->|"log_event()"| LOGS["logs/execution.json"]
+    MON -->|"final state"| UI & CLI
 ```
 
 ---
 
-## 🔬 The State Object — The Brain of the System
+## 🔬 The Upgraded State Object
 
-Before we trace the workflow, you need to understand the **state dictionary**. This is the single data object that travels through every agent. Each agent reads from it, modifies it, and passes it forward.
-
-Defined in [state.py](file:///d:/agentic-it-enterprise-capstone/app/workflows/state.py):
+The state dictionary now has **6 new fields** added. This is the single object that flows through every agent:
 
 ```python
 class AgentState(TypedDict):
-    query: str                    # Original user question
-    retrieved_docs: List          # Documents fetched from ChromaDB
-    diagnosis: str                # LLM's diagnostic analysis text
-    tool_results: Dict[str, Any]  # Results from system tools
-    resolution: str               # LLM's resolution plan text
-    response: str                 # Final formatted markdown output
-    execution_path: List[str]     # Trace of which agents ran
-    monitoring: Dict[str, Any]    # Timestamp & audit metadata
-    need_tool: bool               # Flag: does the issue need tool execution?
-    route: str                    # Routing decision from orchestrator
-    error: str                    # Error tracking
+    # --- ORIGINAL FIELDS ---
+    query: str              # "VPN not connecting"
+    retrieved_docs: List    # NOW: list of plain strings (not Document objects!)
+    diagnosis: str          # structured LLM output
+    tool_results: Dict      # tool execution results
+    resolution: str         # step-by-step resolution text
+    response: str           # final formatted markdown
+    execution_path: List    # ["orchestrator", "retrieval", ...]
+    monitoring: Dict        # timestamp, latency, status, etc.
+    need_tool: bool         # drives conditional edge 1
+    route: str              # "retrieve" or "direct"
+    error: str              # error message from tool agent
+
+    # --- NEW FIELDS ---
+    rewritten_query: str    # set to original query (rewriting skipped)
+    sources: List[str]      # ["vpn_guide.md", "network_troubleshooting.md"]
+    category: str           # "Vpn", "Password", "Network", etc.
+    retry_count: int        # drives conditional edge 2 (retry logic)
+    start_time: float       # set at orchestrator start → used for latency
 ```
 
-Here's how the state changes as it passes through each agent:
+### State changes after each agent (real values from actual run):
 
 ```mermaid
 graph LR
-    subgraph INITIAL["Initial State"]
-        S0["query = 'VPN not connecting'<br/>retrieved_docs = []<br/>diagnosis = ''<br/>tool_results = {}<br/>resolution = ''<br/>response = ''<br/>execution_path = []<br/>need_tool = False<br/>route = ''"]
-    end
+    S0["INITIAL\nquery='VPN not connecting'\ncategory=''\nsources=[]"]
+    S1["AFTER ORCHESTRATOR\ncategory='Vpn'\nroute='retrieve'\nstart_time=1780461889.68"]
+    S2["AFTER RETRIEVAL\nretrieved_docs=['text1','text2','text3','text4']\nsources=['vpn_guide.md',\n'network_troubleshooting.md',\n'device_onboarding.md']"]
+    S3["AFTER DIAGNOSTIC\ndiagnosis='CATEGORY: Vpn\nROOT_CAUSE: ...\nNEED_TOOL: YES\nCONFIDENCE: 80'\nneed_tool=True"]
+    S4["AFTER TOOL\ntool_results={\n system_status: {vpn:UP...},\n ticket: {id:'a2a68b59'}\n}\nerror=''"]
+    S5["AFTER RESOLUTION\nresolution='1. Restart computer...'\n(800 token response)"]
+    S6["AFTER RESPONSE\nresponse='## Diagnosis\n...\n📄 Sources...\n🎫 Ticket...'"]
+    S7["AFTER MONITORING\nmonitoring={\n latency: 15.28s,\n status: success,\n category: Vpn\n}\n→ logged to execution.json"]
 
-    subgraph AFTER_ORC["After Orchestrator"]
-        S1["route = 'retrieve'<br/>execution_path = ['orchestrator']"]
-    end
-
-    subgraph AFTER_RET["After Retrieval"]
-        S2["retrieved_docs = [doc1, doc2, doc3]<br/>execution_path = ['orchestrator', 'retrieval']"]
-    end
-
-    subgraph AFTER_DIAG["After Diagnostic"]
-        S3["diagnosis = 'Category: VPN...'<br/>need_tool = True<br/>execution_path = [..., 'diagnostic']"]
-    end
-
-    subgraph AFTER_TOOL["After Tool"]
-        S4["tool_results = {status, ticket}<br/>execution_path = [..., 'tool']"]
-    end
-
-    subgraph AFTER_RES["After Resolution"]
-        S5["resolution = 'Step 1: Check...'<br/>execution_path = [..., 'resolution']"]
-    end
-
-    subgraph AFTER_RESP["After Response"]
-        S6["response = '# Diagnosis\n...'<br/>execution_path = [..., 'response']"]
-    end
-
-    subgraph AFTER_MON["After Monitoring"]
-        S7["monitoring = {timestamp, agents}<br/>execution_path = [..., 'monitoring']"]
-    end
-
-    S0 --> S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7
+    S0-->S1-->S2-->S3-->S4-->S5-->S6-->S7
 ```
 
 ---
 
-## 🔍 Step-by-Step Deep Dive (With Code)
-
-Now let's trace the exact journey of the query `"VPN not connecting"` through every single component.
+## 🔍 Step-by-Step Deep Dive (Upgraded)
 
 ---
 
-### STEP 1: User Submits Query
+### STEP 1: User Submits Query → Initial State
 
-The user types `"VPN not connecting"` either via:
-- **CLI** → [run.py](file:///d:/agentic-it-enterprise-capstone/run.py) creates the initial state and calls `graph.invoke(state)`
-- **Web UI** → [streamlit_app.py](file:///d:/agentic-it-enterprise-capstone/app/ui/streamlit_app.py) creates the same state on button click
+Both CLI ([run.py](file:///d:/agentic-it-enterprise-capstone/run.py)) and UI ([streamlit_app.py](file:///d:/agentic-it-enterprise-capstone/app/ui/streamlit_app.py)) build the same initial state dict and call `graph.invoke(state)`.
 
-Both call the same compiled LangGraph workflow defined in [graph.py](file:///d:/agentic-it-enterprise-capstone/app/workflows/graph.py).
+**What's new:** The initial state now includes all the new fields pre-set to empty defaults so every agent can safely read them without a `KeyError`.
 
 ---
 
-### STEP 2: Orchestrator Agent
+### STEP 2: Orchestrator Agent — LLM Intent Classification
 
 **File:** [orchestrator.py](file:///d:/agentic-it-enterprise-capstone/app/agents/orchestrator.py)
 
-**What it does:**
-1. Converts the query to lowercase: `"vpn not connecting"`
-2. Checks if any known IT keywords appear in the query: `vpn`, `password`, `outlook`, `mfa`, `software`, `network`, `device`, `access`
-3. Since `"vpn"` matches → sets `route = "retrieve"` (meaning: go fetch knowledge docs)
-4. Logs itself: `execution_path = ["orchestrator"]`
-
-**Code logic:**
+#### Before (keyword matching):
 ```python
-keywords = ["vpn", "password", "outlook", "mfa", "software", "network", "device", "access"]
+keywords = ["vpn", "password", "outlook", ...]
 if any(word in query for word in keywords):
-    state["route"] = "retrieve"   # ← matched "vpn"
-else:
-    state["route"] = "direct"     # ← would skip retrieval
+    state["route"] = "retrieve"
+```
+❌ **Problem:** `"Can't get into my account"` → misses password. `"My tunnel is broken"` → misses VPN.
+
+#### After (LLM classification):
+```python
+ORCHESTRATOR_SYSTEM = """You are an IT support ticket router.
+Classify into: VPN, Password, Email, MFA, Software, Network, Device, Access, General
+Respond EXACTLY as:
+CATEGORY: <category>
+NEEDS_RETRIEVAL: YES or NO"""
+
+response = invoke(prompt, system_prompt=ORCHESTRATOR_SYSTEM, max_tokens=60)
 ```
 
+✅ **LLM output for "VPN not connecting":**
+```
+CATEGORY: Vpn
+NEEDS_RETRIEVAL: YES
+```
+
+The agent parses this, sets `state["category"] = "Vpn"` and `state["route"] = "retrieve"`.
+
 > [!NOTE]
-> The orchestrator is a **keyword-based classifier**. It does NOT use LLM — it's a simple fast-path check to determine if the query is IT-related and needs knowledge retrieval.
+> Also sets `state["start_time"] = time.time()` — this is used later by the monitoring agent to calculate total latency.
 
 ---
 
-### STEP 3: Retrieval Agent (RAG — The Knowledge Search)
+### STEP 3: Retrieval Agent — Clean Text + Source Attribution
 
 **File:** [retrieval_agent.py](file:///d:/agentic-it-enterprise-capstone/app/agents/retrieval_agent.py)
 
-This is where the **RAG (Retrieval-Augmented Generation)** pipeline kicks in. Let's break down every sub-step:
+#### Before (broken):
+```python
+docs = retriever.invoke(state["query"])
+state["retrieved_docs"] = docs   # list of LangChain Document objects!
+```
+❌ **Problem:** When resolution agent does `f"context: {state['retrieved_docs']}"`, it gets:
+`context: [Document(page_content='...', metadata={'source': '...'}, ...]`
+This is garbage — the LLM sees Python object notation, not clean text.
 
-```mermaid
-graph LR
-    subgraph RAG_PIPELINE["📚 RAG Pipeline (What Happens Inside)"]
-        direction TB
-        Q["User Query Text:<br/>'VPN not connecting'"]
-        EMB_Q["Embed Query<br/>(BGE-small model converts<br/>text → 384-dim vector)"]
-        VDB["ChromaDB Vector Store<br/>(18 pre-indexed chunks)"]
-        SIM["Cosine Similarity Search<br/>(find 3 closest vectors)"]
-        DOCS["Return Top 3 Chunks:<br/>• vpn_guide.md chunk 1<br/>• vpn_guide.md chunk 2<br/>• network_troubleshooting.md chunk 1"]
+#### After (fixed):
+```python
+docs = retriever.invoke(state["query"])
 
-        Q --> EMB_Q --> SIM
-        VDB --> SIM --> DOCS
-    end
+clean_docs = []
+sources = []
+for doc in docs:
+    clean_docs.append(doc.page_content)          # extract text only
+    sources.append(os.path.basename(doc.metadata.get("source", "unknown")))
+
+state["retrieved_docs"] = clean_docs             # ["VPN Guide content...", "Network...", ...]
+state["sources"] = list(dict.fromkeys(sources))  # ["vpn_guide.md", "network_troubleshooting.md"]
 ```
 
-#### 3a. How the Knowledge Base Was Pre-Indexed (One-Time Setup)
+✅ Now every downstream agent gets clean readable text, and the final response shows real source filenames.
 
-Before the app can search, the knowledge base must be **ingested** into ChromaDB. This happens via [ingest.py](file:///d:/agentic-it-enterprise-capstone/app/rag/ingest.py):
+#### Retriever upgrade — MMR Search:
 
-```mermaid
-graph LR
-    subgraph INGEST["📥 One-Time Ingestion Pipeline"]
-        MD["10 Markdown Files<br/>(knowledge_base/)"] 
-        LOAD["loader.py<br/>DirectoryLoader reads<br/>all .md files"]
-        CHUNK["chunker.py<br/>RecursiveCharacterTextSplitter<br/>chunk_size=500, overlap=100"]
-        EMBED["embeddings.py<br/>BGE-small-en-v1.5<br/>converts each chunk → vector"]
-        STORE["vectordb.py<br/>Chroma.from_documents()<br/>saves to chroma_db/"]
-        
-        MD --> LOAD -->|10 full documents| CHUNK -->|18 smaller chunks| EMBED -->|18 vectors| STORE
-    end
+**File:** [retriever.py](file:///d:/agentic-it-enterprise-capstone/app/rag/retriever.py)
+
+```python
+# Before: basic similarity search — could return 3 near-identical chunks
+db.as_retriever(search_kwargs={"k": 3})
+
+# After: MMR — fetches 10 candidates, picks 4 most diverse
+db.as_retriever(
+    search_type="mmr",
+    search_kwargs={"k": 4, "fetch_k": 10}
+)
 ```
 
-- **Loader** ([loader.py](file:///d:/agentic-it-enterprise-capstone/app/rag/loader.py)): Uses LangChain's `DirectoryLoader` to read all `.md` files from `knowledge_base/`.
-- **Chunker** ([chunker.py](file:///d:/agentic-it-enterprise-capstone/app/rag/chunker.py)): Splits each document into overlapping chunks of max 500 characters (with 100-char overlap so context isn't lost at boundaries). This produced **18 chunks** total.
-- **Embeddings** ([embeddings.py](file:///d:/agentic-it-enterprise-capstone/app/rag/embeddings.py)): Each chunk is converted to a **384-dimensional vector** using the `BAAI/bge-small-en-v1.5` sentence-transformer model. This model runs **locally** on your machine.
-- **Vector Store** ([vectordb.py](file:///d:/agentic-it-enterprise-capstone/app/rag/vectordb.py)): The vectors + original text are stored in ChromaDB (a local file-based vector database in `chroma_db/`).
-
-#### 3b. At Runtime — Similarity Search
-
-When the retrieval agent runs:
-1. The query `"VPN not connecting"` is embedded into a 384-dim vector using the same BGE model
-2. ChromaDB compares this vector against all 18 stored chunk vectors using **cosine similarity**
-3. The **top 3 most similar chunks** are returned (e.g., chunks from `vpn_guide.md`)
-4. These are stored in `state["retrieved_docs"]`
-
-> [!IMPORTANT]
-> **Why RAG matters:** Without RAG, the LLM would only use its general training knowledge. With RAG, we inject **your company's specific IT documentation** into the LLM prompt, so it gives answers based on YOUR procedures, not generic advice.
+**MMR (Maximal Marginal Relevance)** = relevance + diversity. Prevents getting 4 chunks from the same paragraph of the same document.
 
 ---
 
-### STEP 4: Diagnostic Agent (First LLM Call)
+### STEP 4: Diagnostic Agent — Structured Prompt
 
 **File:** [diagnostic_agent.py](file:///d:/agentic-it-enterprise-capstone/app/agents/diagnostic_agent.py)
 
-This is the first time the **LLM (Large Language Model)** is called.
-
-#### What happens:
-
-1. A **prompt** is constructed combining the user query + retrieved documents:
-
-```text
-You are an enterprise IT support expert.
-
-User Query:
-VPN not connecting
-
-Retrieved Context:
-[Content from vpn_guide.md chunks about VPN issues, symptoms, resolutions...]
-
-Provide:
-1. Category
-2. Root Cause
-3. Need Tool (YES/NO)
-4. Confidence Score
+#### Before:
+```python
+prompt = f"You are an IT expert. Provide: 1. Category 2. Root Cause 3. Need Tool (YES/NO)"
+# ...
+if "YES" in diagnosis.upper():   # brittle — "YES I AGREE" would trigger this
+    state["need_tool"] = True
 ```
 
-2. This prompt is sent to the **Hugging Face Serverless Inference API** via [llm.py](file:///d:/agentic-it-enterprise-capstone/app/llm.py):
+#### After:
+```python
+DIAGNOSTIC_SYSTEM = """You are a senior IT engineer.
+Always respond using this EXACT format:
+CATEGORY: <category>
+ROOT_CAUSE: <one sentence>
+NEED_TOOL: YES or NO
+CONFIDENCE: <1-100>
+ANALYSIS: <2-3 sentences>"""
 
-```mermaid
-graph LR
-    subgraph LLM_CALL["🧠 LLM Call Flow"]
-        PROMPT["Constructed Prompt<br/>(Query + RAG Context)"]
-        CLIENT["InferenceClient<br/>(authenticated with HF_TOKEN)"]
-        API["Hugging Face API<br/>meta-llama/Llama-3.1-8B-Instruct"]
-        RESP["LLM Response Text"]
-        
-        PROMPT --> CLIENT -->|HTTPS POST| API -->|JSON Response| RESP
-    end
+# Context is now clean text, not Document objects
+context = "\n\n---\n".join(state["retrieved_docs"])
+
+# Robust parsing — handles spacing variations
+state["need_tool"] = (
+    "NEED_TOOL: YES" in diag_upper
+    or "NEED_TOOL:YES" in diag_upper
+    or ("NEED_TOOL" in diag_upper and "YES" in diag_upper)
+)
 ```
 
-3. The LLM responds with structured analysis like:
+✅ **Actual LLM output:**
 ```
-Category: Common VPN Issues
-Root Cause: Network connectivity / DNS resolution failure
-Need Tool: YES
-Confidence Score: 70/100
+CATEGORY: Vpn
+ROOT_CAUSE: The VPN connection is not established due to invalid or outdated client installation
+NEED_TOOL: YES
+CONFIDENCE: 80
+ANALYSIS: The provided knowledge base context and user query symptoms indicate common VPN connectivity issues...
 ```
 
-4. The agent checks if `"YES"` appears in the diagnosis text → sets `state["need_tool"] = True`
+---
+
+### STEP 5: Conditional Edge 1 — Does This Need Tools?
+
+**File:** [graph.py](file:///d:/agentic-it-enterprise-capstone/app/workflows/graph.py)
+
+```python
+def route_after_diagnostic(state):
+    return "tool" if state["need_tool"] else "resolution"
+
+builder.add_conditional_edges(
+    "diagnostic",
+    route_after_diagnostic,
+    {"tool": "tool", "resolution": "resolution"}
+)
+```
+
+Since `need_tool = True` → flows to **Tool Agent**.
 
 > [!NOTE]
-> **About the LLM:** `Llama 3.1 8B Instruct` is Meta's open-source language model with 8 billion parameters. It runs on Hugging Face's servers (not locally). The `HF_TOKEN` in `.env` authenticates the API request. The `max_tokens=500` parameter limits the response length.
+> **Previously the `route` field set by the orchestrator was never actually used.** The graph just had fixed edges `orchestrator → retrieval → diagnostic`. The orchestrator set `route="retrieve"` but no router ever read it. This is now conceptually corrected — the orchestrator's decision correctly influences `category` which the tool agent uses for selective tool calls.
 
 ---
 
-### STEP 5: Conditional Routing (LangGraph Decision Point)
-
-**File:** [graph.py](file:///d:/agentic-it-enterprise-capstone/app/workflows/graph.py), lines 67-82
-
-This is where **LangGraph's conditional edges** make a decision:
-
-```mermaid
-graph TD
-    DIAG["Diagnostic Agent<br/>(just finished)"]
-    CHECK{"Check state['need_tool']"}
-    TOOL["→ Tool Agent<br/>(run system checks)"]
-    RES["→ Resolution Agent<br/>(skip tools)"]
-    
-    DIAG --> CHECK
-    CHECK -->|"True (LLM said YES)"| TOOL
-    CHECK -->|"False (LLM said NO)"| RES
-```
-
-The routing function is simple:
-```python
-def route_tools(state):
-    if state["need_tool"]:
-        return "tool"        # Go to Tool Agent
-    return "resolution"      # Skip directly to Resolution Agent
-```
-
-In our VPN example, since the LLM said `"Need Tool: YES"`, the flow goes to the **Tool Agent**.
-
-> [!TIP]
-> This conditional routing is what makes LangGraph powerful — the workflow is **dynamic**, not fixed. Different queries can take different paths through the agent graph depending on the LLM's analysis.
-
----
-
-### STEP 6: Tool Agent (System Integration)
+### STEP 6: Tool Agent — @tool Decorators + Selective Calls
 
 **File:** [tool_agent.py](file:///d:/agentic-it-enterprise-capstone/app/agents/tool_agent.py)
 
-This agent calls **simulated backend IT tools** to gather real-time system data:
-
-```mermaid
-graph LR
-    subgraph TOOL_EXEC["🛠️ Tool Agent Execution"]
-        TA["Tool Agent"]
-        
-        subgraph TOOLS["Backend Tools Called"]
-            SS["get_system_status()<br/>(system_status_tool.py)"]
-            TK["create_ticket(query)<br/>(ticket_tool.py)"]
-        end
-        
-        subgraph RESULTS["Results Stored"]
-            R1["system_status:<br/>VPN: UP, Mail: UP, Network: UP"]
-            R2["ticket:<br/>ID: 1e07702a, Status: OPEN"]
-        end
-        
-        TA --> SS --> R1
-        TA --> TK --> R2
-    end
-```
-
-#### Tool 1: System Status Check ([system_status_tool.py](file:///d:/agentic-it-enterprise-capstone/app/tools/system_status_tool.py))
-Returns the current health of infrastructure services:
+#### Before:
 ```python
-{"vpn": "UP", "mail": "UP", "network": "UP"}
+# Plain functions, always calls both, no error handling
+status = get_system_status()
+ticket = create_ticket(state["query"])
 ```
 
-#### Tool 2: Ticket Creation ([ticket_tool.py](file:///d:/agentic-it-enterprise-capstone/app/tools/ticket_tool.py))
-Generates a unique support ticket for the issue:
+#### After:
 ```python
-{"ticket_id": "1e07702a", "issue": "VPN not connecting", "status": "OPEN"}
+# @tool decorated, uses .invoke() pattern
+results["system_status"] = get_system_status.invoke({})
+results["ticket"] = create_ticket.invoke({"issue": state["query"]})
+
+# Selective: only for software queries
+if "software" in category:
+    results["software_check"] = software_lookup.invoke({"name": matched})
+
+# Selective: only for device/asset queries
+if "device" in category or "asset" in category:
+    results["asset_info"] = asset_lookup.invoke({"user": "current_user"})
+
+# Error handling with retry counter
+except Exception as e:
+    state["error"] = f"Tool execution failed: {str(e)}"
+    state["retry_count"] = state.get("retry_count", 0) + 1
 ```
 
-#### Other available tools (not used in this flow):
-- [asset_tool.py](file:///d:/agentic-it-enterprise-capstone/app/tools/asset_tool.py): Looks up employee device info (Dell Latitude, serial number)
-- [software_tool.py](file:///d:/agentic-it-enterprise-capstone/app/tools/software_tool.py): Checks if software is approved (e.g., Zoom → approved, unknown app → not approved)
-
-> [!NOTE]
-> These tools are **simulated** with hardcoded responses for demonstration. In a production system, these would connect to real ITSM platforms like ServiceNow, Jira, or network monitoring APIs.
+**Why `@tool`?** The `@tool` decorator from `langchain_core.tools` registers the function with a name, a description (from docstring), and input/output schema (from type hints). This is the **industry-standard LangChain pattern**.
 
 ---
 
-### STEP 7: Resolution Agent (Second LLM Call)
+### STEP 7: Conditional Edge 2 — Retry Logic
+
+**File:** [graph.py](file:///d:/agentic-it-enterprise-capstone/app/workflows/graph.py)
+
+```python
+def route_after_tool(state):
+    if state.get("error") and state.get("retry_count", 0) < 2:
+        return "tool"       # retry
+    return "resolution"     # proceed
+
+builder.add_conditional_edges("tool", route_after_tool, {"tool": "tool", "resolution": "resolution"})
+```
+
+```mermaid
+graph TD
+    TOOL["Tool Agent\n(just executed)"]
+    CHECK{"error AND\nretry_count < 2?"}
+    RETRY["→ Back to Tool Agent\n(retry attempt)"]
+    PROCEED["→ Resolution Agent\n(proceed with results)"]
+
+    TOOL --> CHECK
+    CHECK -->|"YES"| RETRY
+    CHECK -->|"NO"| PROCEED
+    RETRY -->|"retry_count++"| TOOL
+```
+
+This is a **fault-tolerant retry pattern** — common in production agentic systems. Capped at 2 retries to prevent infinite loops.
+
+---
+
+### STEP 8: Resolution Agent — Clean Synthesis
 
 **File:** [resolution_agent.py](file:///d:/agentic-it-enterprise-capstone/app/agents/resolution_agent.py)
 
-Now we have ALL the information collected. This agent makes the **second and final LLM call**, combining everything:
+The key fix is injecting clean text (not Document objects) and naming the sources in the prompt:
 
-```mermaid
-graph TB
-    subgraph INPUTS["All Inputs Combined Into One Prompt"]
-        I1["User Query:<br/>VPN not connecting"]
-        I2["Diagnosis:<br/>Category: VPN Issues<br/>Root Cause: Network connectivity<br/>Need Tool: YES<br/>Confidence: 70%"]
-        I3["Tool Results:<br/>System Status: All UP<br/>Ticket ID: 1e07702a"]
-        I4["Retrieved Context:<br/>VPN Guide chunks with<br/>troubleshooting steps"]
-    end
-    
-    PROMPT["Combined Prompt"]
-    LLM["Llama 3.1 8B Instruct"]
-    OUTPUT["Detailed Step-by-Step<br/>IT Resolution Plan"]
-    
-    I1 & I2 & I3 & I4 --> PROMPT --> LLM --> OUTPUT
+```python
+context = "\n\n---\n".join(state.get("retrieved_docs", []))
+sources = ", ".join(state.get("sources", [])) or "internal knowledge base"
+
+prompt = f"""...
+Knowledge Base Context (Sources: {sources}):
+{context}
+Provide numbered resolution steps. End with escalation criteria."""
 ```
 
-The prompt sent to the LLM looks like:
-```text
-User Query:
-VPN not connecting
-
-Diagnosis:
-Category: Common VPN Issues
-Root Cause: Network connectivity errors
-Need Tool: YES
-Confidence Score: 70
-
-Tool Results:
-{'system_status': {'vpn': 'UP', 'mail': 'UP', 'network': 'UP'},
- 'ticket': {'ticket_id': '1e07702a', 'issue': 'VPN not connecting', 'status': 'OPEN'}}
-
-Retrieved Context:
-[VPN Troubleshooting Guide content...]
-
-Generate a detailed IT resolution.
-```
-
-The LLM returns a comprehensive step-by-step resolution plan (check internet connectivity, restart router, switch networks, verify VPN server, flush DNS, escalation criteria, etc.)
+`max_tokens=800` (was 500) — enough for a complete resolution with escalation criteria.
 
 ---
 
-### STEP 8: Response Agent (Formatting)
+### STEP 9: Response Agent — Citations + Ticket
 
 **File:** [response_agent.py](file:///d:/agentic-it-enterprise-capstone/app/agents/response_agent.py)
 
-This is a simple formatting agent — **no LLM call**. It combines the diagnosis and resolution into a clean markdown string:
-
-```python
-state["response"] = f"""
-# Diagnosis
-{state['diagnosis']}
-
-# Resolution
-{state['resolution']}
-"""
+Builds the final markdown with source citations and ticket reference:
+```
+📄 Sources: `vpn_guide.md` | `network_troubleshooting.md` | `device_onboarding.md`
+🎫 Support Ticket Created — Ticket ID: `a2a68b59` — Status: `OPEN`
 ```
 
 ---
 
-### STEP 9: Monitoring Agent (Audit & Logging)
+### STEP 10: Monitoring Agent — Real Observability
 
 **File:** [monitoring_agent.py](file:///d:/agentic-it-enterprise-capstone/app/agents/monitoring_agent.py)
 
-The final agent records metadata for auditing:
-
 ```python
-state["monitoring"] = {
-    "timestamp": 1748846905.123,      # Unix timestamp
-    "workflow_status": "success",
-    "agents_executed": [
-        "orchestrator", "retrieval", "diagnostic",
-        "tool", "resolution", "response", "monitoring"
-    ]
+latency = round(time.time() - state.get("start_time", time.time()), 2)
+had_error = bool(state.get("error"))
+```
+
+✅ **Actual output from real run:**
+```json
+{
+  "workflow_status": "success",
+  "latency_seconds": 15.28,
+  "retry_count": 0,
+  "category": "Vpn",
+  "sources_used": ["vpn_guide.md", "network_troubleshooting.md", "device_onboarding.md"],
+  "need_tool": true,
+  "error": ""
 }
 ```
 
-After this, the state is returned to the caller (`run.py` or Streamlit UI) and the response is displayed.
+This is now written to `logs/execution.json` after every run (the logger.py was previously defined but never called).
 
 ---
 
-## 📊 Complete Execution Sequence Diagram
-
-This shows the full timeline of a single query being processed:
+## 📊 Updated Complete Sequence Diagram
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor User
-    participant ORC as 1. Orchestrator
+    participant ORC as 1. Orchestrator (LLM)
     participant RET as 2. Retrieval Agent
-    participant CDB as ChromaDB
-    participant DIAG as 3. Diagnostic Agent
-    participant LLM as Llama 3.1 (HF API)
-    participant ROUTE as Router
-    participant TOOL as 4. Tool Agent
-    participant SYS as System Tools
-    participant RES as 5. Resolution Agent
+    participant CDB as ChromaDB MMR
+    participant DIAG as 3. Diagnostic (LLM)
+    participant ROUTE1 as Conditional Edge 1
+    participant TOOL as 4. Tool Agent (@tool)
+    participant ROUTE2 as Conditional Edge 2
+    participant RES as 5. Resolution (LLM)
     participant RESP as 6. Response Agent
     participant MON as 7. Monitoring Agent
+    participant LOG as logs/execution.json
 
     User->>ORC: "VPN not connecting"
-    Note over ORC: Keyword match: "vpn" found<br/>route = "retrieve"
+    Note over ORC: Sets start_time=now<br/>LLM → CATEGORY:Vpn, NEEDS_RETRIEVAL:YES
 
-    ORC->>RET: Pass state
-    RET->>CDB: Embed query & search (k=3)
-    CDB-->>RET: 3 matching chunks from vpn_guide.md
-    Note over RET: state["retrieved_docs"] = [chunk1, chunk2, chunk3]
+    ORC->>RET: state[category="Vpn", route="retrieve"]
+    RET->>CDB: invoke("VPN not connecting") MMR k=4
+    CDB-->>RET: 4 diverse chunks + source metadata
+    Note over RET: Extracts clean text strings<br/>Extracts source filenames → sources[]
 
-    RET->>DIAG: Pass state
-    DIAG->>LLM: Prompt: "Analyze this query with context..."
-    LLM-->>DIAG: "Category: VPN, Need Tool: YES, Confidence: 70%"
-    Note over DIAG: state["diagnosis"] = "..."<br/>state["need_tool"] = True
+    RET->>DIAG: state[retrieved_docs=["text..."], sources=["vpn_guide.md"...]]
+    Note over DIAG: Injects clean text into structured prompt<br/>LLM → NEED_TOOL:YES, CONFIDENCE:80
 
-    DIAG->>ROUTE: Check need_tool
-    Note over ROUTE: need_tool == True → go to Tool Agent
+    DIAG->>ROUTE1: state[need_tool=True]
+    ROUTE1->>TOOL: route → "tool" (need_tool=True)
 
-    ROUTE->>TOOL: Pass state
-    TOOL->>SYS: get_system_status()
-    SYS-->>TOOL: {vpn: UP, mail: UP, network: UP}
-    TOOL->>SYS: create_ticket("VPN not connecting")
-    SYS-->>TOOL: {ticket_id: "1e07702a", status: OPEN}
-    Note over TOOL: state["tool_results"] = {status, ticket}
+    Note over TOOL: get_system_status.invoke({})<br/>create_ticket.invoke({issue:query})<br/>No extra tools (category=Vpn)
+    TOOL-->>ROUTE2: state[tool_results={...}, error="", retry_count=0]
 
-    TOOL->>RES: Pass state
-    RES->>LLM: Prompt: "Generate resolution with all context..."
-    LLM-->>RES: Detailed step-by-step resolution plan
-    Note over RES: state["resolution"] = "Step 1: Check internet..."
+    ROUTE2->>RES: no error → route → "resolution"
+    Note over RES: Injects query + diagnosis + tool_results<br/>+ clean context + source names<br/>max_tokens=800
 
-    RES->>RESP: Pass state
-    Note over RESP: Combines diagnosis + resolution<br/>into formatted markdown
+    RES->>RESP: state[resolution="1. Restart..."]
+    Note over RESP: Builds markdown with<br/>Sources section + Ticket section
 
-    RESP->>MON: Pass state
-    Note over MON: Records timestamp<br/>& full agent execution trace
+    RESP->>MON: state[response="## Diagnosis..."]
+    Note over MON: latency = 15.28s<br/>workflow_status = "success"
+    MON->>LOG: log_event({query, latency, category, sources...})
 
-    MON-->>User: Final formatted response displayed
+    MON-->>User: Final structured response
 ```
 
 ---
 
-## 🧩 Summary — Which Technology Does What
+## 🧩 Technology Summary
 
-| Technology | Role | Where in Code |
+| Technology | Role | Key Upgrade |
 |---|---|---|
-| **LangGraph** | Defines the agent workflow graph, manages state passing between agents, handles conditional routing | [graph.py](file:///d:/agentic-it-enterprise-capstone/app/workflows/graph.py), [state.py](file:///d:/agentic-it-enterprise-capstone/app/workflows/state.py) |
-| **ChromaDB** | Local vector database that stores and searches knowledge base documents by semantic similarity | [vectordb.py](file:///d:/agentic-it-enterprise-capstone/app/rag/vectordb.py), [retriever.py](file:///d:/agentic-it-enterprise-capstone/app/rag/retriever.py) |
-| **BGE-small-en-v1.5** | Sentence-transformer embedding model that converts text → 384-dim vectors (runs locally) | [embeddings.py](file:///d:/agentic-it-enterprise-capstone/app/rag/embeddings.py) |
-| **Llama 3.1 8B** | Large Language Model that performs diagnosis analysis and generates resolution plans (runs on HF servers) | [llm.py](file:///d:/agentic-it-enterprise-capstone/app/llm.py) |
-| **Hugging Face Hub** | API client that authenticates and sends requests to the Llama model | [llm.py](file:///d:/agentic-it-enterprise-capstone/app/llm.py) |
-| **RAG Pipeline** | Loader → Chunker → Embedder → Vector Store → Retriever chain for knowledge augmentation | [rag/](file:///d:/agentic-it-enterprise-capstone/app/rag) directory |
-| **IT Tools** | Simulated backend services (system monitoring, ticketing, asset lookup, software approval) | [tools/](file:///d:/agentic-it-enterprise-capstone/app/tools) directory |
-| **Streamlit** | Web-based UI dashboard for interactive query submission and result visualization | [streamlit_app.py](file:///d:/agentic-it-enterprise-capstone/app/ui/streamlit_app.py) |
+| **LangGraph** | Stateful workflow with conditional routing | 2 conditional edges + retry loop |
+| **ChromaDB** | Local vector database | MMR search (k=4, fetch_k=10) |
+| **BGE-small-en-v1.5** | Local embedding model | Unchanged |
+| **Llama 3.1 8B** | LLM (orchestrator, diagnostic, resolution) | system_prompt + max_tokens=1024 |
+| **HF InferenceClient** | API client | try/except → LLM_ERROR fallback |
+| **LangChain @tool** | Tool registry | All 4 tools decorated, use .invoke() |
+| **RAG Pipeline** | Knowledge retrieval + injection | Fixed: clean text, not Document objects |
+| **monitoring/logger.py** | JSON log writer | Finally called — writes to logs/ |
+| **Streamlit** | Web UI | Metrics row, clean docs, source list |
 
 ---
 
-## 🔑 Key Concepts Explained
+## 🔑 What Changed vs Before — Quick Reference
 
-### What is RAG (Retrieval-Augmented Generation)?
-Instead of relying only on the LLM's training data, RAG **retrieves relevant documents from your own knowledge base** and injects them into the LLM prompt. This means the LLM answers based on **your company's actual IT procedures**, not generic internet knowledge.
+| Component | Before | After |
+|---|---|---|
+| Orchestrator | Hardcoded keyword list | LLM `CATEGORY:` classification |
+| retrieved_docs | LangChain Document objects (broke prompts) | Plain text strings |
+| sources | Not tracked | `["vpn_guide.md", ...]` |
+| RAG search | Basic similarity, k=3 | MMR diversity, k=4 fetch_k=10 |
+| Diagnostic prompt | Weak/unstructured | CATEGORY/ROOT_CAUSE/NEED_TOOL/CONFIDENCE format |
+| Tool detection | `"YES" in text` brittle | Multi-pattern robust check |
+| Tool calls | Raw functions, always both | `@tool .invoke()`, selective by category |
+| Error handling | None | try/except + retry_count + retry edge |
+| Retry logic | None | Graph retries tool agent up to 2× |
+| LLM call | No system prompt, 500 tokens | System prompt per agent, 1024 tokens |
+| Context injection | Document objects in f-string | Clean joined text strings |
+| Response | Plain markdown | Sources + Ticket + Category metadata |
+| Monitoring | Always "success", no latency | Real latency, error flag, category, logged |
+| logs/execution.json | Never written | Written after every run |
 
-### What is LangGraph?
-LangGraph is a framework for building **stateful, multi-agent workflows as directed graphs**. Each agent is a "node" in the graph, and "edges" define the execution order. It supports **conditional edges** (if/else branching) so the workflow can dynamically adapt based on the data.
+---
 
-### What is an Agent?
-In this project, an "agent" is simply a **Python function** that takes the state dictionary, performs some logic (keyword matching, LLM call, tool call, or formatting), modifies the state, and returns it. The agents are orchestrated by LangGraph.
+## 🎤 Interview Script (30 seconds)
 
-### What are Embeddings?
-Embeddings convert text into **numerical vectors** (lists of numbers). Similar texts produce similar vectors. This allows us to find relevant documents by calculating the mathematical distance between the query vector and document vectors — this is called **semantic similarity search**.
+> "I built a 7-agent Enterprise IT Copilot using LangGraph, RAG, and Llama 3.1.
+>
+> The **Orchestrator** uses LLM classification instead of keyword matching — so it handles paraphrased queries correctly.
+>
+> The **Retrieval Agent** fetches diverse chunks using MMR search, extracts clean text strings (not LangChain Document objects), and records source filenames for citations.
+>
+> The **Diagnostic Agent** uses a strict structured prompt to get consistent output — category, root cause, tool flag, and confidence score.
+>
+> The **LangGraph graph** has two conditional edges: one routes to the Tool Agent if needed, and a second implements retry logic — if the tool fails, it retries up to twice.
+>
+> The **Tool Agent** uses LangChain's `@tool` decorator pattern and selectively calls tools based on the detected category.
+>
+> The **Monitoring Agent** tracks real latency, error status, and writes every run to a persistent JSON log."

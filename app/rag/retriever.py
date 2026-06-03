@@ -1,8 +1,5 @@
 from langchain_chroma import Chroma
-
-from app.rag.embeddings import (
-    get_embedding_model
-)
+from app.rag.embeddings import get_embedding_model
 
 
 def get_retriever():
@@ -12,6 +9,12 @@ def get_retriever():
         embedding_function=get_embedding_model()
     )
 
+    # MMR (Maximal Marginal Relevance) — balances relevance + diversity
+    # fetch_k=10: fetches 10 candidates, then picks k=4 most diverse
     return db.as_retriever(
-        search_kwargs={"k": 3}
+        search_type="mmr",
+        search_kwargs={
+            "k":       4,
+            "fetch_k": 10
+        }
     )

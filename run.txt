@@ -1,0 +1,22 @@
+Step 1: Create Virtual Environment
+python -m venv venv
+
+
+Step 2: Activate It
+venv\Scripts\activate
+
+
+Step 3: Install Dependencies
+pip install -r requirements.txt
+
+Step 4: Add Your HF Token in .env
+HF_TOKEN=hf_your_actual_token_here
+
+Step 5: Ingest Knowledge Base into ChromaDB
+python -m app.rag.ingest
+
+Step 6: Run
+CLI: python run.py
+
+OR Streamlit UI:
+streamlit run app/ui/streamlit_app.py --server.headless true
