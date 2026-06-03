@@ -11,21 +11,9 @@ sentence-transformers
 
 streamlit
 
-langsmith
-
 pypdf
 
 python-dotenv
-
-plotly
-
-pandas
-
-numpy
-
-unstructured
-
-tqdm
 
 requests
 
@@ -33,10 +21,4 @@ transformers
 
 huggingface_hub
 
-fastapi
-
-uvicorn
-
 torch
-
-accelerate

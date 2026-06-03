@@ -1,94 +1,286 @@
-import streamlit as st
+import sys
+import os
 
+# Ensure the project root is on the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+
+import streamlit as st
 from app.workflows.graph import graph
+from app.tools.system_status_tool import get_system_status
 
 st.set_page_config(
     page_title="Enterprise IT Copilot",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
-st.title(
-    "Enterprise IT Operations Copilot"
-)
+# Premium custom CSS styling
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
 
-st.markdown(
-    "Multi-Agent RAG + LangGraph + ChromaDB"
-)
+html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+    font-family: 'Outfit', sans-serif;
+    background-color: #0b0f19 !important; /* Dark Slate Blue */
+    color: #e2e8f0;
+}
 
+/* Clean up standard Streamlit spacing */
+.block-container {
+    padding-top: 2rem !important;
+    padding-bottom: 2rem !important;
+}
+
+/* Glassmorphism Card styling */
+.glass-card {
+    background: rgba(17, 24, 39, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    margin-bottom: 16px;
+}
+
+/* Header style block */
+.header-container {
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 35px;
+    margin-bottom: 25px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.header-title {
+    font-size: 2.6rem;
+    font-weight: 700;
+    background: linear-gradient(to right, #38bdf8, #a855f7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin: 0 0 8px 0;
+}
+
+.header-subtitle {
+    font-size: 1.05rem;
+    color: #94a3b8;
+    margin: 0;
+}
+
+/* Custom button styling */
+div.stButton > button {
+    background: linear-gradient(to right, #0284c7, #7c3aed);
+    color: white !important;
+    font-weight: 600;
+    border: none !important;
+    padding: 10px 28px !important;
+    border-radius: 8px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 0 4px 14px rgba(124, 58, 237, 0.3) !important;
+}
+
+div.stButton > button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(124, 58, 237, 0.5) !important;
+    background: linear-gradient(to right, #0369a1, #6d28d9) !important;
+    border: none !important;
+}
+
+div.stButton > button:active {
+    transform: translateY(0) !important;
+}
+
+/* Custom tabs styling */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+    background-color: rgba(15, 23, 42, 0.4);
+    padding: 6px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.stTabs [data-baseweb="tab"] {
+    height: 44px;
+    background-color: transparent;
+    border-radius: 8px;
+    color: #94a3b8;
+    font-weight: 500;
+    border: none;
+    transition: all 0.2s ease;
+    padding-left: 16px;
+    padding-right: 16px;
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    color: #f8fafc;
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+.stTabs [aria-selected="true"] {
+    background-color: rgba(124, 58, 237, 0.15) !important;
+    color: #c084fc !important;
+    border: 1px solid rgba(124, 58, 237, 0.3) !important;
+}
+
+/* Step Pipeline Flow */
+.pipeline-container {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin: 20px 0;
+}
+
+.pipeline-step {
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #cbd5e1;
+}
+
+.pipeline-step.active {
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.2) 0%, rgba(56, 189, 248, 0.2) 100%);
+    border: 1px solid rgba(124, 58, 237, 0.4);
+    color: #c084fc;
+    box-shadow: 0 0 15px rgba(124, 58, 237, 0.15);
+}
+
+.pipeline-arrow {
+    color: #475569;
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# App Header Hero Section
+st.markdown("""
+<div class="header-container">
+    <h1 class="header-title">Enterprise IT Operations Copilot</h1>
+    <p class="header-subtitle">Intelligent Multi-Agent RAG Orchestration powered by LangGraph, ChromaDB, and Hugging Face</p>
+</div>
+""", unsafe_allow_html=True)
+
+# System Status Dashboard Widgets
+st.markdown("### 🖥️ Live Service Operations Dashboard")
+status_info = get_system_status()
+cols = st.columns(len(status_info))
+for i, (svc, stat) in enumerate(status_info.items()):
+    with cols[i]:
+        # Green bullet for UP
+        badge_color = "#10b981" if stat.upper() == "UP" else "#ef4444"
+        st.markdown(f"""
+        <div class="glass-card" style="text-align: center; padding: 14px 10px; margin-bottom: 20px;">
+            <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; margin-bottom: 6px;">{svc} STATUS</div>
+            <div style="font-size: 1.25rem; font-weight: 700; color: {badge_color}; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <span style="height: 10px; width: 10px; background-color: {badge_color}; border-radius: 50%; display: inline-block;"></span>
+                {stat}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+st.markdown("### 💬 Submit IT Support Query")
 query = st.text_area(
-    "Describe your IT issue"
+    "Describe the technical issue, request, or symptom you are experiencing:",
+    placeholder="e.g. VPN not connecting after software update, or password reset process.",
+    height=100
 )
 
-if st.button("Submit"):
+if st.button("Submit Query"):
+    if not query.strip():
+        st.warning("Please describe your issue first.")
+    else:
+        state = {
+            "query": query,
+            "retrieved_docs": [],
+            "diagnosis": "",
+            "tool_results": {},
+            "resolution": "",
+            "response": "",
+            "execution_path": [],
+            "monitoring": {},
+            "need_tool": False,
+            "route": "",
+            "error": ""
+        }
 
-    state = {
+        with st.spinner("Orchestrating agents and generating solution..."):
+            result = graph.invoke(state)
 
-        "query": query,
+        st.markdown("### 🔍 Investigation Results")
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "📋 Diagnostic Response",
+            "📖 Retrieved Knowledge Base",
+            "🛠️ System Tools & Integration",
+            "📊 Agent Monitoring"
+        ])
 
-        "retrieved_docs": [],
+        with tab1:
+            st.markdown("""
+            <div class="glass-card" style="border-left: 4px solid #7c3aed; padding-top: 15px;">
+                <div style="font-size: 1.2rem; font-weight: 700; color: #c084fc; margin-bottom: 15px;">Resolution Output</div>
+            """, unsafe_allow_html=True)
+            st.markdown(result["response"])
+            st.markdown("</div>", unsafe_allow_html=True)
 
-        "diagnosis": "",
+        with tab2:
+            st.markdown("#### 📖 Matching Knowledge Articles")
+            if not result.get("retrieved_docs"):
+                st.info("No knowledge articles were retrieved for this query.")
+            else:
+                for idx, doc in enumerate(result["retrieved_docs"]):
+                    source = doc.metadata.get("source", "Unknown Source")
+                    source_file = os.path.basename(source)
+                    st.markdown(f"""
+                    <div class="glass-card" style="border-left: 4px solid #38bdf8; margin-bottom: 12px; padding: 18px;">
+                        <div style="font-weight: 600; color: #38bdf8; margin-bottom: 8px; font-size: 0.95rem;">
+                            📄 Article {idx + 1}: <span style="color: #cbd5e1; font-weight: normal;">{source_file}</span>
+                        </div>
+                        <div style="color: #cbd5e1; font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;">
+{doc.page_content}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-        "tool_results": {},
+        with tab3:
+            st.markdown("#### 🛠️ Automated Tools Executed")
+            tool_results = result.get("tool_results", {})
+            if not tool_results:
+                st.info("No integration tools were required to resolve this query.")
+            else:
+                col1, col2 = st.columns(2)
+                if "system_status" in tool_results:
+                    with col1:
+                        st.markdown("""
+                        <div class="glass-card" style="border-left: 4px solid #f59e0b;">
+                            <h5 style="margin: 0 0 12px 0; color: #f59e0b;">🖥️ System Diagnostics Run</h5>
+                        """, unsafe_allow_html=True)
+                        st.json(tool_results["system_status"])
+                        st.markdown("</div>", unsafe_allow_html=True)
+                if "ticket" in tool_results:
+                    with col2:
+                        st.markdown("""
+                        <div class="glass-card" style="border-left: 4px solid #10b981;">
+                            <h5 style="margin: 0 0 12px 0; color: #10b981;">🎫 IT Support Ticket Created</h5>
+                        """, unsafe_allow_html=True)
+                        st.json(tool_results["ticket"])
+                        st.markdown("</div>", unsafe_allow_html=True)
 
-        "resolution": "",
+        with tab4:
+            st.markdown("#### 📊 Execution Pipeline")
+            path = result.get("execution_path", [])
+            
+            pipeline_html = '<div class="pipeline-container">'
+            for i, step in enumerate(path):
+                pipeline_html += f'<div class="pipeline-step active">{step.upper()}</div>'
+                if i < len(path) - 1:
+                    pipeline_html += '<div class="pipeline-arrow">➔</div>'
+            pipeline_html += '</div>'
+            st.markdown(pipeline_html, unsafe_allow_html=True)
 
-        "response": "",
-
-        "execution_path": [],
-
-        "monitoring": {},
-
-        "need_tool": False,
-
-        "route": "",
-
-        "error": ""
-    }
-
-    with st.spinner(
-        "Running agents..."
-    ):
-
-        result = graph.invoke(
-            state
-        )
-
-    tab1, tab2, tab3, tab4 = st.tabs(
-        [
-            "Response",
-            "Retrieved Docs",
-            "Tools",
-            "Monitoring"
-        ]
-    )
-
-    with tab1:
-
-        st.markdown(
-            result["response"]
-        )
-
-    with tab2:
-
-        for doc in result["retrieved_docs"]:
-
-            st.write(
-                doc.page_content
-            )
-
-    with tab3:
-
-        st.json(
-            result["tool_results"]
-        )
-
-    with tab4:
-
-        st.json(
-            result["monitoring"]
-        )
-
-        st.write(
-            result["execution_path"]
-        )
+            st.markdown("#### ⏱️ Monitoring Metadata")
+            st.json(result.get("monitoring", {}))

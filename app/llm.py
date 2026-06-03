@@ -5,7 +5,6 @@ from huggingface_hub import InferenceClient
 load_dotenv()
 
 client = InferenceClient(
-    provider="hf-inference",
     api_key=os.getenv("HF_TOKEN")
 )
 
